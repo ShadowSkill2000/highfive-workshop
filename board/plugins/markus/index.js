@@ -94,6 +94,34 @@ function kategori(vad) {
   return 'okänt';
 }
 
+// ---------- Djupet ----------
+
+const djupetFil = (dataDir) => path.join(dataDir, 'djupet.json');
+function lasDjupet(dataDir) {
+  try { return JSON.parse(fs.readFileSync(djupetFil(dataDir), 'utf8')); }
+  catch { return { anhängare: 0, kallelser: [], offer: [], omvända: [] }; }
+}
+function sparaDjupet(dataDir, d) {
+  d.kallelser = d.kallelser.slice(0, 30);
+  d.offer = d.offer.slice(0, 30);
+  try { fs.writeFileSync(djupetFil(dataDir), JSON.stringify(d, null, 2)); }
+  catch { /* diskfel stoppar inte pulsen */ }
+}
+
+const TECKEN = {
+  'strömavbrott': 'Mörkret som föll över staden var inget haveri. Det var Moder Hydras andedräkt genom kablarna.',
+  'kupp':         'Vad människorna kallar brott kallar Djupet tribut. Fader Dagon tar det som redan var hans.',
+  'överlämning':  'Jakten korsar staden som ett tidvatten korsar en strand. Inget som flyr undgår Djupet för evigt.',
+  'socker-slut':  'Sötman tog slut för att allt sött till syvende och sist tillhör havet. Bristen är en bön besvarad.',
+  'ransonering':  'Ransonering är Djupets ordning, inte människornas. Vi delar redan allt med havet.',
+  'angrepp':      'Det hål ni öppnade i stadens svar öppnar också mot Djupet. Något stort andas i sömmen.',
+  'kyrkogård':    'Det som föll här sjunker till oss. Inget svar går förlorat — det byter bara hav.',
+};
+const KLASSISK = ['Iä! Iä! Cthulhu fhtagn!', 'Iä! Fader Dagon! Iä! Moder Hydra!', 'Vi går tillbaka till Moder Hydra och Fader Dagon, varifrån vi en gång kom.'];
+const VACKNA_ORD = /dagon|hydra|cthulhu|r'?lyeh|innsmouth|djupet|deep ones?|iä\b/i;
+
+function slumpKlassisk() { return KLASSISK[Math.floor(Math.random() * KLASSISK.length)]; }
+
 module.exports = {
   async handle(req, res, { path: p, dataDir, board }) {
     if (req.method === 'GET' && p === '/domar') {

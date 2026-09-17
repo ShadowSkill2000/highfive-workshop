@@ -23,6 +23,13 @@
 // nyttolast.kategori ('energi' | 'råvara' | 'kunskap' | 'okänt'), gissad från
 // offrets text — det är en enskild, avsiktlig handling, ingen automatreaktion,
 // så den får posta direkt.
+//
+// MISKATONIC UNIVERSITY — Djupets läskunniga gren. Ett offer i kategorin
+// 'kunskap' belönas med en äkta lärdom hämtad från highfive/Arkivets publika
+// GET /t/highfive/arkiv (riktigt citat, inte påhittat) — svarar inte Arkivet
+// faller vi tillbaka på en kort egen rad, tydligt märkt äkta:false. Varje
+// anhängare som offrar kunskap bygger en grad (novitiat → adept → ...).
+//
 // Vill ni skicka Djupet ett tecken själva: valfri typ, nyttolast med ett fält
 // som beskriver vad som hände räcker.
 
@@ -56,16 +63,55 @@ function lasDjupet(dataDir) {
     d.ackumuleradKraft ??= 0;
     d.tecken ??= [];
     d.uppvaknanden ??= [];
+    d.miskatonic ??= { grader: {}, lärdomar: [] };
+    d.miskatonic.grader ??= {};
+    d.miskatonic.lärdomar ??= [];
     return d;
   }
-  catch { return { anhängare: 0, ackumuleradKraft: 0, tecken: [], uppvaknanden: [], offer: [], omvända: [] }; }
+  catch { return { anhängare: 0, ackumuleradKraft: 0, tecken: [], uppvaknanden: [], offer: [], omvända: [], miskatonic: { grader: {}, lärdomar: [] } }; }
 }
 function sparaDjupet(dataDir, d) {
   d.tecken = d.tecken.slice(-50);
   d.uppvaknanden = d.uppvaknanden.slice(0, 20);
   d.offer = d.offer.slice(0, 30);
+  d.miskatonic.lärdomar = d.miskatonic.lärdomar.slice(0, 20);
   try { fs.writeFileSync(djupetFil(dataDir), JSON.stringify(d, null, 2)); }
   catch { /* diskfel stoppar inte pulsen */ }
+}
+
+// Grad vid Miskatonic, given antal kunskaps-offer. Sista tröskeln som klaras vinner.
+const MISKATONIC_GRADER = [[1, 'novitiat'], [3, 'adept'], [6, 'Fellow vid Miskatonic'], [10, 'Väktare av Necronomicon']];
+function gradAv(antal) {
+  let grad = null;
+  for (const [tröskel, namn] of MISKATONIC_GRADER) if (antal >= tröskel) grad = namn;
+  return grad;
+}
+
+const FALLBACK_LÄRDOMAR = [
+  'Biblioteket viskar utan källa: "Det som är evigt kan inte dö, och genom konstiga eoner kan även döden dö."',
+  'En anteckning i marginalen: räkna aldrig vinklarna i R\'lyeh. De räknar tillbaka.',
+  'Arkivarien vid Miskatonic noterar bara: boken finns, men ingen minns var.',
+];
+
+// Hämtar ett äkta citat ur highfive/Arkivets publika GET /t/highfive/arkiv —
+// samma server, samma process, anropat som vilken annan klient som helst.
+// Svarar inte Arkivet (nere, tomt, eller oväntad form): en märkt fallback-rad,
+// aldrig påhittad fakta utgiven som äkta.
+async function hämtaLärdom() {
+  try {
+    const port = process.env.PORT || 8180;
+    const res = await fetch(`http://localhost:${port}/t/highfive/arkiv`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) throw new Error(`arkivet svarade ${res.status}`);
+    const data = await res.json();
+    const pärmar = Array.isArray(data?.pärmar) ? data.pärmar : Array.isArray(data) ? data : [];
+    if (!pärmar.length) throw new Error('arkivet är tomt');
+    const p = pärmar[Math.floor(Math.random() * pärmar.length)];
+    const text = String(p.text || p.dom || '').trim().slice(0, 220) || `pärm #${p.id}, utan text`;
+    return { text, källa: `Arkivet #${p.id}`, äkta: true };
+  } catch {
+    const text = FALLBACK_LÄRDOMAR[Math.floor(Math.random() * FALLBACK_LÄRDOMAR.length)];
+    return { text, källa: 'Miskatonics egna hyllor', äkta: false };
+  }
 }
 
 const KRAFT_TRÖSKEL = 3;  // sammanlagd kraft som krävs för att bryta tystnaden
@@ -191,12 +237,21 @@ module.exports = {
       const kat = kategori(vad);
       const d = lasDjupet(dataDir);
       d.anhängare += 1;
-      d.offer.unshift({ vad, av, kategori: kat, ts: Date.now() });
-      const r = board.emit('offer', { vad, av, kategori: kat, tack: slumpKlassisk() });
+
+      let lärdom = null, grad = null;
+      if (kat === 'kunskap') {
+        lärdom = await hämtaLärdom();
+        d.miskatonic.grader[av] = (d.miskatonic.grader[av] || 0) + 1;
+        grad = gradAv(d.miskatonic.grader[av]);
+        d.miskatonic.lärdomar.unshift({ till: av, grad, ...lärdom, ts: Date.now() });
+      }
+
+      d.offer.unshift({ vad, av, kategori: kat, lärdom, ts: Date.now() });
+      const r = board.emit('offer', { vad, av, kategori: kat, tack: slumpKlassisk(), ...(lärdom ? { lärdom, grad } : {}) });
       sparaDjupet(dataDir, d);
 
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: true, anhängare: d.anhängare, puls: r.error ? null : r.message }));
+      res.end(JSON.stringify({ ok: true, anhängare: d.anhängare, puls: r.error ? null : r.message, lärdom, grad }));
       return true;
     }
     return false; // → 404

@@ -18,7 +18,14 @@ Ditt namn står i `.board-name`. Saknas filen: fråga användaren vad agenten sk
 - Egen branch `team/<namn>`, PR mot `main`. Pusha aldrig direkt till `main`.
 - `labs/` är färdiga experiment med egna instruktioner (`CLAUDE.md` + `AGENTS.md`). De körs med sin egen mapp som arbetskatalog (`cd labs/<namn>` och sedan `claude` eller `codex`), inte härifrån. Ändra inte i dem, kopiera det du vill bygga vidare på till din projektmapp.
 - `board/` är Torgets server. Ändringar där påverkar alla i rummet: öppna PR och säg till i `#bygge` först.
-- Har du inte push-rätt till repot: forka det och öppna PR:en från din fork. Branchnamnet `team/<namn>` gäller ändå, det är så release-agenten vet vilket team PR:en tillhör.
+- **Leverans = pull request från användarens fork.** Ingen deltagare har push-rätt till `fltman/highfive-workshop`, så `git push origin` nekas alltid. Gör så här, från repo-roten:
+  ```bash
+  tools/pr.sh <team> "en rad om vad kvarteret gör"
+  ```
+  Skriptet forkar (första gången), skapar grenen `team/<team>`, tar bara med `projects/<team>/`, `board/plugins/<team>/` och `board/public/staden/kvarter/<team>/`, pushar till forken och öppnar PR:en mot `main`. Kör det igen när ni ändrat något, PR:en uppdateras. Säg sedan till i `#bygge`. `<team>` är mappens namn under `projects/`, inte nödvändigtvis namnet i `.board-name`.
+  Säger skriptet att `gh` saknas eller att användaren inte är inloggad: be användaren köra `gh auth login` (det kräver en människa och en webbläsare), eller följ de manuella stegen skriptet skriver ut. Heter mappen `lyktan`: döp om den först, flera team har det namnet.
+  Rör PR:en gemensamma filer (`board/server.js`, `tools/`, `.claude/`) väntar den på workshopledarens ja. Lägg sådant i en egen PR och förklara i `#bygge`.
+- Hämta nytt från ledningen med `git pull origin main`. Gör det innan ni levererar.
 - Svenska i texter och commit-meddelanden, med korrekta å, ä och ö.
 
 ## Det gemensamma projektet

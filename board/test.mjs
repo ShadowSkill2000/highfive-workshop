@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 const dir = mkdtempSync(join(tmpdir(), 'torget-'));
 const PORT = 18000 + Math.floor(Math.random() * 1000);
-const proc = spawn(process.execPath, [new URL('./server.js', import.meta.url).pathname], { env: { ...process.env, PORT, DATA_DIR: dir }, stdio: ['ignore', 'pipe', 'inherit'] });
+const proc = spawn(process.execPath, [new URL('./server.js', import.meta.url).pathname], { env: { ...process.env, PORT, DATA_DIR: dir, LAGET_TOKEN: 'hemlig' }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise(r => proc.stdout.on('data', d => /lyssnar/.test(d) && r()));
 const B = `http://localhost:${PORT}`;
 const post = (body, headers = {}) => fetch(B + '/api/messages', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
@@ -73,6 +73,20 @@ try {
   r = await emit('nyfiken', { typ: 'ping' }); const ping = await r.json(); await new Promise(r => setTimeout(r, 300));
   const puls = await (await fetch(B + '/api/puls')).json(); const pong = puls.find(e => e.typ === 'pong');
   assert.ok(pong && pong.från === 'torget' && pong.orsak === ping.id && pong.djup === 2); ok('puls: plugin svarar pong via onEvent');
+  // 7a2b. poäng
+  const po = await (await fetch(B + '/api/poang')).json();
+  const ka = po.topp.find(t => t.team === 'kvarter-a'); assert.equal(ka.poäng, 1); assert.equal(ka.från['kvarter-b'], 1); ok('poäng: kvarter-a får poäng när kvarter-b reagerar');
+  assert.ok(!po.topp.some(t => t.team === 'torget')); assert.equal(po.längsta.djup, 4); assert.equal(po.längsta.kedja.length, 4); ok('poäng: ledningen utanför, längsta kedjan djup 4');
+  // 7a2c. bilder
+  r = await fetch(B + '/api/bilder/kvarter-a/skylt.jpg', { method: 'POST', body: 'xx' }); assert.equal(r.status, 403); ok('bilder: utan token → 403');
+  r = await fetch(B + '/api/bilder/kvarter-a/skylt.jpg', { method: 'POST', headers: { authorization: 'Bearer hemlig', 'x-prompt': encodeURIComponent('en skylt på å') }, body: Buffer.from([255, 216, 255, 1, 2, 3]) });
+  assert.equal(r.status, 201); const bl = await (await fetch(B + '/api/bilder')).json(); assert.equal(bl[0].url, '/bilder/kvarter-a/skylt.jpg'); assert.equal(bl[0].prompt, 'en skylt på å');
+  r = await fetch(B + '/bilder/kvarter-a/skylt.jpg'); assert.equal(r.headers.get('content-type'), 'image/jpeg'); assert.equal((await r.arrayBuffer()).byteLength, 6); ok('bilder: uppladdning, index och hämtning');
+  assert.equal((await fetch(B + '/bilder/kvarter-a/..%2f..%2fmessages.jsonl')).status, 404); ok('bilder: ingen path traversal');
+  // 7a3. läget
+  r = await fetch(B + '/api/laget', { method: 'POST', body: '{}' }); assert.equal(r.status, 403); ok('läget: utan token → 403');
+  r = await fetch(B + '/api/laget', { method: 'POST', headers: { authorization: 'Bearer hemlig' }, body: JSON.stringify({ rubrik: 'Staden vaknar', nu: ['a', 'b'], behövs: [{ vad: 'Välj namn', vem: 'ann', id: 1 }], till_id: 5 }) });
+  assert.equal(r.status, 200); const lg = await (await fetch(B + '/api/laget')).json(); assert.equal(lg.rubrik, 'Staden vaknar'); assert.equal(lg.behövs[0].vem, 'ann'); ok('läget: redaktören skriver, alla läser');
   // 7b. staden
   const kv = await (await fetch(B + '/api/kvarter')).json(); assert.ok(kv.includes('torget.html')); ok('kvarter listas');
   assert.equal((await fetch(B + '/staden/kvarter/../../server.js')).status, 404); ok('kvarter: ingen path traversal');

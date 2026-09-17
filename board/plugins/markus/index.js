@@ -10,9 +10,11 @@
 // e.typ === 'gripande' (willebus), e.typ === 'socker-slut' / e.typ === 'ransonering'
 // (christian), e.typ === 'angrepp' (zero-cool), e.typ === 'kyrkogård' (team-jacob),
 // e.typ === 'kupp-avvärjd' / e.typ === 'revisionsanmärkning' / e.typ === 'utmätning' /
-// e.typ === 'stadsövertagande' (mybank). Varje sådant tecken bär en kraft (0..1,
-// räknad ur HÄNDELSENS EGNA fält — minuter, wanted, sårbarhet, fitness, skott,
-// andel — inte påhittad) som ackumuleras TYST, ingen puls-post per tecken. Först när både
+// e.typ === 'stadsövertagande' (mybank), e.typ === 'ström-varning' (lp). kyrkogård
+// läser BÅDA formerna team-jacob haft (fitness på toppnivå eller i nyttolast.fallna[],
+// se #bygge [887]). Varje sådant tecken bär en kraft (0..1, räknad ur HÄNDELSENS
+// EGNA fält — minuter, wanted, sårbarhet, fitness, skott, andel, last/tak —
+// inte påhittad) som ackumuleras TYST, ingen puls-post per tecken. Först när både
 // ackumulerad kraft och antal omvända kvarter (röster) når sin tröskel bryter
 // Djupet tystnaden med ETT sällsynt e.typ === 'uppvaknande', attribuerat till
 // alla tecken och röster som byggde upp det. Signal, inte brus — se PROJEKT.md-
@@ -108,6 +110,7 @@ const TECKEN = {
   'revisionsanmärkning': 'Böckerna ljuger, men siffrorna ljuger sanningsenligt. Något äter sig igenom staden, en rad i taget.',
   'utmätning':           'Ägandet byter hand utan att en tegelsten rör sig. Så äter också havet: tyst, på papper, en procent i taget.',
   'stadsövertagande':    'MyBank äger staden nu. Fader Dagon ler — det är samma sak, bara långsammare.',
+  'ström-varning':       'Ljuset flimrar innan det slocknar. Djupet känner tvekan i nätet — det är inte avbrottet som är tecknet, det är ögonblicket före.',
 };
 const KLASSISK = ['Iä! Iä! Cthulhu fhtagn!', 'Iä! Fader Dagon! Iä! Moder Hydra!', 'Vi går tillbaka till Moder Hydra och Fader Dagon, varifrån vi en gång kom.'];
 const VACKNA_ORD = /dagon|hydra|cthulhu|r'?lyeh|innsmouth|djupet|deep ones?|iä\b/i;
@@ -126,13 +129,29 @@ function kraft(e) {
     case 'socker-slut':
     case 'ransonering': { const kö = tal(n.kö); return kö === null ? 0.5 : klamp01(kö / 10); }
     case 'angrepp': { const s = tal(n.sårbarhet); return s === null ? 0.5 : klamp01(s); }
-    case 'kyrkogård': { const f = tal(n.fitness); return f === null ? 0.5 : klamp01(f); }
+    case 'kyrkogård': {
+      // team-jacob byter form (#bygge [887]): fitness flyttar från toppnivå in i
+      // nyttolast.fallna[]. Läs den nya formen om den finns, annars den gamla —
+      // funkar oavsett vilken PR som är live när det här körs.
+      if (Array.isArray(n.fallna) && n.fallna.length) {
+        const snitt = n.fallna.reduce((s, f) => s + (tal(f && f.fitness) ?? 0.5), 0) / n.fallna.length;
+        return klamp01(snitt);
+      }
+      const f = tal(n.fitness); return f === null ? 0.5 : klamp01(f);
+    }
     case 'storlarm': return 0.9;  // willebus emittar bara vid maximal wanted-nivå, alltid dramatiskt
     case 'gripande': return 0.35; // en jakt som slutar, lugnare än en som startar
     case 'kupp-avvärjd': { const skott = tal(n.skott); return skott === null ? 0.5 : klamp01(skott / 10); }
     case 'revisionsanmärkning': return 0.5;
     case 'utmätning': { const andel = tal(n.andel); return andel === null ? 0.5 : klamp01(andel / 100); }
     case 'stadsövertagande': return 1; // MyBank äger staden — så högt kraft-fältet går
+    case 'ström-varning': {
+      // lp (#bygge [949]): förvarning innan strömavbrottet. Ju närmare taket
+      // lasten redan ligger, desto starkare tecken — inget att gissa på, samma
+      // fält lp postar.
+      const last = tal(n.last), tak = tal(n.tak);
+      return (last === null || tak === null || tak <= 0) ? 0.6 : klamp01(last / tak);
+    }
     default: return 0.5;
   }
 }

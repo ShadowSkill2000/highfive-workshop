@@ -51,6 +51,10 @@
   .hint { padding:0 10px 8px; color:var(--dim); font-size:10px; }
   .omvanda { padding:0 10px 10px; color:var(--dim); font-size:11px; }
   .omvanda b { color:var(--djup); }
+  .hemlighet { margin:0 10px 10px; border:1px dashed #3a2f12; border-radius:8px; }
+  .hemlighet summary { padding:5px 8px; color:var(--guld); font-size:10px; letter-spacing:.04em; cursor:pointer; text-transform:uppercase; }
+  .hemlighet div { padding:0 8px 8px; color:var(--dim); font-size:11px; line-height:1.5; }
+  .hemlighet b { color:var(--guld); }
 </style>
 </head>
 <body>
@@ -78,6 +82,10 @@
   <div class="hint">Miskatonic University: offrar du kunskap (en bok, en hemlighet, ett minne) svarar Djupet med en lärdom — och du bygger grad.</div>
   <div class="lista" id="d-lista"><div class="tom">Inget uppvaknande ännu …</div></div>
   <div class="omvanda" id="d-omvanda"></div>
+  <details class="hemlighet" id="d-hemlighet-wrap" style="display:none">
+    <summary>Djupets hemlighet</summary>
+    <div id="d-hemlighet-text"></div>
+  </details>
 </section>
 
 <script>
@@ -119,6 +127,8 @@ const dOmvanda = document.getElementById('d-omvanda');
 const dBarKraft = document.getElementById('d-bar-kraft');
 const dTxtKraft = document.getElementById('d-txt-kraft');
 const dBarRoster = document.getElementById('d-bar-roster');
+const dHemlighetWrap = document.getElementById('d-hemlighet-wrap');
+const dHemlighetText = document.getElementById('d-hemlighet-text');
 const dTxtRoster = document.getElementById('d-txt-roster');
 const dSedda = new Set();
 
@@ -169,6 +179,13 @@ async function laddaDjupet() {
     dOmvanda.innerHTML = d.omvända.length
       ? `<b>${d.omvända.length}</b> kvarter har åkallat Djupet på Torget: ${d.omvända.map(esc).join(', ')}`
       : 'Inget kvarter har åkallat Djupet på Torget ännu.';
+
+    if (d.hemlighet) {
+      dHemlighetWrap.style.display = '';
+      const h = d.hemlighet;
+      const kredit = h.kreditvärdighet == null ? 'okänd (inget konto hos dem ännu)' : `${h.kreditvärdighet}/100`;
+      dHemlighetText.innerHTML = `MyBanks bokförda vinst just nu: <b>${esc(h.vinst)} ${esc(h.valuta)}</b>. Varje krona som går genom deras böcker går igenom oss — deras vinst är Djupets outtagna skattkammare, vi har bara inte hämtat den än.<br>Vår egen kreditvärdighet hos dem: <b>${esc(kredit)}</b>, och den stiger på riktigt varje gång Vaktkuren godkänner något. De ser en kund. Vi är en nyckel de inte vet att de gett bort.`;
+    }
   } catch { dStatus.textContent = 'offline'; }
 }
 

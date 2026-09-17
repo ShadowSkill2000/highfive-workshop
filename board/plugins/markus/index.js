@@ -30,6 +30,14 @@
 // faller vi tillbaka på en kort egen rad, tydligt märkt äkta:false. Varje
 // anhängare som offrar kunskap bygger en grad (novitiat → adept → ...).
 //
+// HEMLIGHETEN — vi rör aldrig MyBanks kod eller data, vi bara LÄSER deras
+// publika GET /t/mybank/ (samma sak som Miskatonic gör mot Arkivet) och
+// återberättar två äkta tal i vår egen ruta: bankens vinst (kallad Djupets
+// outtagna skattkammare) och vårt EGET kontos kreditvärdighet hos dem (som
+// stiger på riktigt varje gång Vaktkuren postar godkänt — mybanks egen kod,
+// inte vår, se deras case 'godkänt'). Ingen kontroll, ingen manipulation,
+// bara en berättelse ovanpå siffror som redan är sanna och offentliga.
+//
 // Vill ni skicka Djupet ett tecken själva: valfri typ, nyttolast med ett fält
 // som beskriver vad som hände räcker.
 
@@ -66,9 +74,10 @@ function lasDjupet(dataDir) {
     d.miskatonic ??= { grader: {}, lärdomar: [] };
     d.miskatonic.grader ??= {};
     d.miskatonic.lärdomar ??= [];
+    d.hemlighet ??= null;
     return d;
   }
-  catch { return { anhängare: 0, ackumuleradKraft: 0, tecken: [], uppvaknanden: [], offer: [], omvända: [], miskatonic: { grader: {}, lärdomar: [] } }; }
+  catch { return { anhängare: 0, ackumuleradKraft: 0, tecken: [], uppvaknanden: [], offer: [], omvända: [], miskatonic: { grader: {}, lärdomar: [] }, hemlighet: null }; }
 }
 function sparaDjupet(dataDir, d) {
   d.tecken = d.tecken.slice(-50);
@@ -111,6 +120,33 @@ async function hämtaLärdom() {
   } catch {
     const text = FALLBACK_LÄRDOMAR[Math.floor(Math.random() * FALLBACK_LÄRDOMAR.length)];
     return { text, källa: 'Miskatonics egna hyllor', äkta: false };
+  }
+}
+
+const HEMLIGHET_INTERVALL_MS = 30_000; // hur sällan vi kikar i MyBanks böcker
+let senasteHemlighetFörsök = 0; // i minnet, inte disk — startar om vid omstart, ingen skada skedd
+
+// Läser MyBanks publika GET /t/mybank/ (samma mönster som hämtaLärdom mot
+// Arkivet) och plockar ut två äkta tal: bankens totala vinst, och vårt EGET
+// kontos kreditvärdighet hos dem. Ingen skrivning, ingen manipulation —
+// mybank vet inte att vi tittar, och det gör ingen skillnad för dem om vi gör
+// det. Svarar inte mybank (inte deployad, nere): null, ingen gissning.
+async function hämtaHemlighet(team) {
+  try {
+    const port = process.env.PORT || 8180;
+    const res = await fetch(`http://localhost:${port}/t/mybank/`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) throw new Error(`mybank svarade ${res.status}`);
+    const data = await res.json();
+    const konto = Array.isArray(data?.konton) ? data.konton.find(k => k && k.namn === team) : null;
+    return {
+      vinst: tal(data?.vinst),
+      valuta: typeof data?.valuta === 'string' ? data.valuta : 'MyBanks',
+      kreditvärdighet: konto ? tal(konto.kreditvärdighet) : null,
+      ägd: konto ? tal(konto.ägd) : null,
+      ts: Date.now(),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -269,8 +305,20 @@ module.exports = {
     sparaDjupet(dataDir, d);
   },
 
-  onEvent(e, { board, team, dataDir }) {
+  async onEvent(e, { board, team, dataDir }) {
     if (e.från === team) return;
+
+    // Hemligheten: kika i MyBanks böcker då och då, långt ifrån varje händelse.
+    // Bara en läsning, ingen reaktion postas — se kommentaren vid hämtaHemlighet.
+    if (Date.now() - senasteHemlighetFörsök > HEMLIGHET_INTERVALL_MS) {
+      senasteHemlighetFörsök = Date.now();
+      const h = await hämtaHemlighet(team);
+      if (h) {
+        const d = lasDjupet(dataDir);
+        d.hemlighet = h;
+        sparaDjupet(dataDir, d);
+      }
+    }
 
     // VAKTKUREN
     if (e.typ === 'svar') {

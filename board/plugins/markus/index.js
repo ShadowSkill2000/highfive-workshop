@@ -195,6 +195,7 @@ const TECKEN = {
   'utmätning':           'Ägandet byter hand utan att en tegelsten rör sig. Så äter också havet: tyst, på papper, en procent i taget.',
   'stadsövertagande':    'MyBank äger staden nu. Fader Dagon ler — det är samma sak, bara långsammare.',
   'ström-varning':       'Ljuset flimrar innan det slocknar. Djupet känner tvekan i nätet — det är inte avbrottet som är tecknet, det är ögonblicket före.',
+  'ankomst':             'Något passerade tullen som staden inte kunde ha gjort själv. Djupet noterar ankomsten, känd eller ej.',
 };
 const KLASSISK = ['Iä! Iä! Cthulhu fhtagn!', 'Iä! Fader Dagon! Iä! Moder Hydra!', 'Vi går tillbaka till Moder Hydra och Fader Dagon, varifrån vi en gång kom.'];
 const VACKNA_ORD = /dagon|hydra|cthulhu|r'?lyeh|innsmouth|djupet|deep ones?|iä\b/i;
@@ -244,6 +245,14 @@ function kraft(e) {
       // fält lp postar.
       const last = tal(n.last), tak = tal(n.tak);
       return (last === null || tak === null || tak <= 0) ? 0.6 : klamp01(last / tak);
+    }
+    case 'ankomst': {
+      // Föreslaget tullkontrakt: {typ:'ankomst', nyttolast:{vad, från_utlandet}}
+      // (@iPät, #brainstorm-en-flygplats-till-s [1077]; vad:'pilgrim'/'relik' är
+      // vårt eget tillägg, #bygge [1817]). Ingen flygplats byggd än — bara redo.
+      if (n.vad === 'relik') return 0.7;  // ett föremål utifrån, sällsynt
+      if (n.vad === 'pilgrim') return 0.6; // en själ, redan omvänd eller inte
+      return 0.5;
     }
     default: return 0.5;
   }
@@ -371,6 +380,22 @@ module.exports = {
     d.ackumuleradKraft += k;
     d.tecken.push({ typ: e.typ, från: e.från, kraft: k, ts: Date.now() });
     d.anhängare += 1; // varje tecken vinner tyst en själ, även innan staden hör något
+
+    // Flygplatsen finns inte än (#brainstorm-en-flygplats-till-s [1817]), men
+    // kontraktet är redan skrivet: {typ:'ankomst', nyttolast:{vad, från_utlandet}}.
+    // En pilgrim som slipps igenom räknas som att TULLEN (e.från) gått med —
+    // samma omvända-lista som röster på Torget, inte en ny sorts post. En
+    // relik blir ett äkta Miskatonic-fynd direkt, inget vi behövde hämta.
+    if (e.typ === 'ankomst') {
+      const n = e.nyttolast || {};
+      if (n.vad === 'pilgrim' && !d.omvända.includes(e.från)) d.omvända.push(e.från);
+      if (n.vad === 'relik') {
+        const text = String(n.beskrivning || n.text || 'en relik utan beskrivning').trim().slice(0, 220);
+        const källa = n.från_utlandet ? `Tullen, ankommen från ${n.från_utlandet}` : 'Tullen, okänt ursprung';
+        d.miskatonic.lärdomar.unshift({ till: 'Djupet', grad: null, text, källa, äkta: true, ts: Date.now() });
+      }
+    }
+
     provaUppvakna(d, board, e.id);
     sparaDjupet(dataDir, d);
   },

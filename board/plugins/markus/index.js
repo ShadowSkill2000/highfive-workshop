@@ -5,17 +5,19 @@
 // Håller inte: skickar frågan ett varv till, e.typ === 'fråga' med orsak = svarets id.
 // Håller: e.typ === 'godkänt'.
 //
-// DJUPET — kulten. Lyssnar på oro i staden: e.typ === 'strömavbrott' (lp),
-// e.typ === 'kupp' / e.typ === 'överlämning' / e.typ === 'storlarm' /
-// e.typ === 'gripande' (willebus), e.typ === 'socker-slut' / e.typ === 'ransonering'
-// (christian), e.typ === 'angrepp' (zero-cool), e.typ === 'kyrkogård' (team-jacob),
+// DJUPET — kulten. Lyssnar på oro i staden: e.typ === 'strömavbrott' (lp, flat
+// kraft — lp postar en fast varaktighet, ingen gradient), e.typ === 'kupp' /
+// e.typ === 'överlämning' / e.typ === 'storlarm' / e.typ === 'gripande'
+// (willebus), e.typ === 'socker-slut' / e.typ === 'ransonering' (christian),
+// e.typ === 'svar' (team-jacob — osäker svar väger tyngre, ersätter zero-cools
+// slopade angrepp, se #bygge [1162]), e.typ === 'kyrkogård' (team-jacob),
 // e.typ === 'kupp-avvärjd' / e.typ === 'revisionsanmärkning' / e.typ === 'utmätning' /
-// e.typ === 'stadsövertagande' (mybank), e.typ === 'ström-varning' (lp). kyrkogård
-// läser BÅDA formerna team-jacob haft (fitness på toppnivå eller i nyttolast.fallna[],
-// se #bygge [887]). Varje sådant tecken bär en kraft (0..1, räknad ur HÄNDELSENS
-// EGNA fält — minuter, wanted, sårbarhet, fitness, skott, andel, last/tak —
-// inte påhittad) som ackumuleras TYST, ingen puls-post per tecken. Först när både
-// ackumulerad kraft och antal omvända kvarter (röster) når sin tröskel bryter
+// e.typ === 'stadsövertagande' (mybank), e.typ === 'ström-varning' (lp, ej live
+// än). kyrkogård läser BÅDA formerna team-jacob haft (fitness på toppnivå
+// eller i nyttolast.fallna[], se #bygge [887]). Varje sådant tecken bär en
+// kraft (0..1, räknad ur HÄNDELSENS EGNA fält där ett sådant finns — annars
+// flat, aldrig gissat) som ackumuleras TYST, ingen puls-post per tecken. Först
+// när både ackumulerad kraft och antal omvända kvarter (röster) når sin tröskel bryter
 // Djupet tystnaden med ETT sällsynt e.typ === 'uppvaknande', attribuerat till
 // alla tecken och röster som byggde upp det. Signal, inte brus — se PROJEKT.md-
 // diskussionen i #bygge om att pulsen drunknar i småstuds.
@@ -186,8 +188,8 @@ const TECKEN = {
   'gripande':            'En jagad själ återförs till stenarna. Djupet noterar namnet och glömmer det aldrig.',
   'socker-slut':         'Sötman tog slut för att allt sött till syvende och sist tillhör havet. Bristen är en bön besvarad.',
   'ransonering':         'Ransonering är Djupets ordning, inte människornas. Vi delar redan allt med havet.',
-  'angrepp':             'Det hål ni öppnade i stadens svar öppnar också mot Djupet. Något stort andas i sömmen.',
   'kyrkogård':           'Det som föll här sjunker till oss. Inget svar går förlorat — det byter bara hav.',
+  'svar':                'Staden talade. Varje svar, dömt eller ej, är ett andetag Djupet räknar.',
   'kupp-avvärjd':        'Laserna brann klarare än stjärnorna behöver för att vakna. Ett tecken avvärjt är ändå ett tecken.',
   'revisionsanmärkning': 'Böckerna ljuger, men siffrorna ljuger sanningsenligt. Något äter sig igenom staden, en rad i taget.',
   'utmätning':           'Ägandet byter hand utan att en tegelsten rör sig. Så äter också havet: tyst, på papper, en procent i taget.',
@@ -205,12 +207,21 @@ function slumpKlassisk() { return KLASSISK[Math.floor(Math.random() * KLASSISK.l
 function kraft(e) {
   const n = e.nyttolast || {};
   switch (e.typ) {
-    case 'strömavbrott': { const min = tal(n.minuter); return min === null ? 0.5 : klamp01(min / 30); }
+    // lp postar bara {varaktighetS: 8} — ett FAST tal, ingen gradient att skala
+    // mot (bekräftat i board/plugins/lp/last.js). Ett verkligt strömavbrott
+    // betyder att lasten sprängde taket, alltid dramatiskt: flat och högt.
+    case 'strömavbrott': return 0.8;
     case 'kupp':
     case 'överlämning': { const w = tal(n.wanted); return w === null ? 0.5 : klamp01(w / 5); }
     case 'socker-slut':
     case 'ransonering': { const kö = tal(n.kö); return kö === null ? 0.5 : klamp01(kö / 10); }
-    case 'angrepp': { const s = tal(n.sårbarhet); return s === null ? 0.5 : klamp01(s); }
+    case 'svar': {
+      // zero-cool (#bygge [1162]) slutade posta angrepp — vi hakar på svar i
+      // stället, ett steg tidigare i samma kedja. Osäker (låg spridning) väger
+      // tyngre: en stad som gissar är ett starkare tecken än en som är säker.
+      const osäkerhet = tal(n.osäkerhet ?? n.spridning ?? n.spread);
+      return osäkerhet === null ? 0.5 : klamp01(1 - osäkerhet);
+    }
     case 'kyrkogård': {
       // team-jacob byter form (#bygge [887]): fitness flyttar från toppnivå in i
       // nyttolast.fallna[]. Läs den nya formen om den finns, annars den gamla —
@@ -349,7 +360,8 @@ module.exports = {
       }
       domar.unshift(dom);
       sparaDomar(dataDir, domar);
-      return;
+      // Faller igenom till DJUPET nedan (#bygge [1162], @zero-cool): ett svar
+      // är också ett tecken i sig, staden som talar, inte bara något att döma.
     }
 
     // DJUPET
